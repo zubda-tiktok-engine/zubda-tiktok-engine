@@ -1,3 +1,4 @@
+
 import os
 import re
 import json
@@ -13,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 W = 1080
 BLOG_URL = "https://zubda-ksa.blogspot.com/"
 FEED_URL = BLOG_URL + "feeds/posts/default?alt=rss&max-results=20"
-PROCESSED_FILE = "processed.json"
+PROCESSED_FILE = "images_processed.json"
 OUTPUT_DIR = "images"
 
 PALETTES = [
@@ -301,7 +302,6 @@ def render_job(job, index, design):
         (design - 1) // 10
     ]
 
-    # تجهيز النصوص قبل تحديد طول الصورة
     sections = []
 
     if job["paragraphs"]:
@@ -333,7 +333,6 @@ def render_job(job, index, design):
         for paragraph in paragraphs:
             total_lines += len(wrap_text(paragraph, 850, 34)) + 1
 
-    # ارتفاع الصورة يتناسب مع حجم الإعلان
     height = max(1900, 1550 + total_lines * 53)
 
     img = Image.new("RGB", (W, height), light)
@@ -344,9 +343,6 @@ def render_job(job, index, design):
         primary, white, light, accent
     )
 
-    layout = LAYOUTS[(design - 1) % 10]
-
-    # العنوان والهوية
     draw_center(draw, "زبدة الوظائف", 85, 54, white, True)
     draw_center(draw, "وظائف شاغرة", 165, 34, white)
 
@@ -369,7 +365,6 @@ def render_job(job, index, design):
             True
         )
 
-    # بطاقة المحتوى
     content_top = 570
     content_bottom = height - 570
 
@@ -398,7 +393,6 @@ def render_job(job, index, design):
 
         y += 20
 
-    # رمز QR
     qr = create_qr(job["url"])
     qr = qr.resize((350, 350), Image.Resampling.LANCZOS)
 
@@ -415,7 +409,6 @@ def render_job(job, index, design):
 
     img.paste(qr, ((W - 350) // 2, qr_y))
 
-    # التذييل
     footer_y = height - 80
 
     draw_center(
@@ -518,7 +511,6 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # نبدأ من عدد الوظائف المسجلة، ثم نتابع دورة التصاميم
     starting_count = len(seen_urls)
 
     for index, item in enumerate(new_items, start=1):
