@@ -1,6 +1,5 @@
 
 import os
-import textwrap
 from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -9,7 +8,6 @@ W, H = 1080, 1920
 
 NAVY = (12, 35, 70)
 WHITE = (255, 255, 255)
-GRAY = (225, 231, 239)
 LIGHT = (244, 247, 251)
 
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -17,8 +15,8 @@ BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def arabic(text):
-    text = str(text)
-    return get_display(arabic_reshaper.reshape(text))
+    reshaped = arabic_reshaper.reshape(str(text))
+    return get_display(reshaped)
 
 
 def load_font(size, bold=False):
@@ -32,8 +30,7 @@ def draw_centered(draw, text, y, font, color=NAVY):
         arabic(text),
         font=font,
         fill=color,
-        anchor="mm",
-        direction="rtl"
+        anchor="mm"
     )
 
 
@@ -42,8 +39,16 @@ def make_scene(title, lines, number, total):
     draw = ImageDraw.Draw(img)
 
     draw.rectangle((0, 0, W, 280), fill=NAVY)
-    draw_centered(draw, "زبدة الوظائف", 115, load_font(58, True), WHITE)
-    draw_centered(draw, "وظائف شاغرة", 205, load_font(35), WHITE)
+
+    draw_centered(
+        draw, "زبدة الوظائف", 115,
+        load_font(58, True), WHITE
+    )
+
+    draw_centered(
+        draw, "وظائف شاغرة", 205,
+        load_font(35), WHITE
+    )
 
     draw.rounded_rectangle(
         (65, 390, 1015, 1510),
@@ -51,9 +56,13 @@ def make_scene(title, lines, number, total):
         fill=WHITE
     )
 
-    draw_centered(draw, title, 510, load_font(54, True))
+    draw_centered(
+        draw, title, 510,
+        load_font(54, True)
+    )
 
     y = 720
+
     for line in lines:
         font = load_font(43)
         words = str(line).split()
@@ -61,7 +70,9 @@ def make_scene(title, lines, number, total):
 
         for word in words:
             test = (current + " " + word).strip()
-            if draw.textbbox((0, 0), arabic(test), font=font)[2] > 820:
+            shaped = arabic(test)
+
+            if draw.textbbox((0, 0), shaped, font=font)[2] > 820:
                 if current:
                     draw_centered(draw, current, y, font)
                     y += 85
@@ -76,19 +87,15 @@ def make_scene(title, lines, number, total):
         y += 35
 
     draw.rectangle((0, 1640, W, H), fill=NAVY)
+
     draw_centered(
-        draw,
-        "التفاصيل وطريقة التقديم",
-        1740,
-        load_font(48, True),
-        WHITE
+        draw, "التفاصيل وطريقة التقديم",
+        1740, load_font(48, True), WHITE
     )
+
     draw_centered(
-        draw,
-        f"{number} / {total}",
-        1850,
-        load_font(30),
-        WHITE
+        draw, f"{number} / {total}",
+        1850, load_font(30), WHITE
     )
 
     return img
@@ -101,31 +108,28 @@ def make_video_frames(data, output_dir="frames"):
         ("وظيفة جديدة", ["فرصة وظيفية من زبدة الوظائف"])
     ]
 
-    title = data.get("title", "")
-    company = data.get("company", "")
-    city = data.get("city", "")
-    target = data.get("target", "")
-    work_type = data.get("workType", "")
-    qualification = data.get("qualification", "")
+    fields = [
+        ("المسمى الوظيفي والجهة",
+         [data.get("title", ""), data.get("company", "")]),
 
-    if title or company:
-        scenes.append(("المسمى الوظيفي والجهة",
-                       [v for v in [title, company] if v]))
+        ("مكان العمل", [data.get("city", "")]),
 
-    if city:
-        scenes.append(("مكان العمل", [city]))
+        ("تفاصيل الوظيفة",
+         [data.get("target", ""), data.get("workType", "")]),
 
-    details = [v for v in [target, work_type] if v]
-    if details:
-        scenes.append(("تفاصيل الوظيفة", details))
+        ("المؤهلات والشروط",
+         [data.get("qualification", "")])
+    ]
 
-    if qualification:
-        scenes.append(("المؤهلات والشروط", [qualification]))
+    for heading, values in fields:
+        values = [v for v in values if v]
+        if values:
+            scenes.append((heading, values))
 
-    scenes.append(("قدّم الآن", [
-        "للتفاصيل وطريقة التقديم",
-        "زر رابط المقال في الوصف"
-    ]))
+    scenes.append((
+        "قدّم الآن",
+        ["للتفاصيل وطريقة التقديم", "رابط المقال في الوصف"]
+    ))
 
     total = len(scenes)
 
@@ -139,7 +143,7 @@ def make_video_frames(data, output_dir="frames"):
 if __name__ == "__main__":
     make_video_frames({
         "title": "أخصائي موارد بشرية",
-        "company": "مثال: شركة سعودية",
+        "company": "شركة سعودية",
         "city": "الرياض",
         "target": "السعوديون",
         "workType": "دوام كامل",
