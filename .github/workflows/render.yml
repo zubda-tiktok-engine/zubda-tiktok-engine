@@ -1,0 +1,40 @@
+name: Zubda TikTok Video Engine
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get project
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      - name: Test renderer
+        run: python renderer.py
+
+      - name: Create MP4
+        run: |
+          ffmpeg -y -loop 1 -i frame.png \
+          -t 5 -r 30 -pix_fmt yuv420p \
+          output.mp4
+
+      - name: Save video
+        uses: actions/upload-artifact@v4
+        with:
+          name: zubda-tiktok-video
+          path: output.mp4
