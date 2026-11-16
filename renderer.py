@@ -1,7 +1,8 @@
 
 import os
 import subprocess
-from PIL import Image, ImageDraw, ImageFont, features
+import qrcode
+from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920
 
@@ -42,7 +43,23 @@ def draw_centered(draw, text, y, font, color=NAVY):
     )
 
 
-def make_scene(title, lines, number, total):
+def make_qr(url):
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=12,
+        border=4
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    return qr.make_image(
+        fill_color="black",
+        back_color="white"
+    ).convert("RGB")
+
+
+def make_scene(title, lines, number, total, qr_url=None):
     img = Image.new("RGB", (W, H), LIGHT)
     draw = ImageDraw.Draw(img)
 
@@ -69,33 +86,53 @@ def make_scene(title, lines, number, total):
         load_font(54, True)
     )
 
-    y = 720
-    font = load_font(43)
+    if qr_url:
+        draw_centered(
+            draw, "امسح الرمز للوصول إلى الوظيفة",
+            680, load_font(38, True)
+        )
 
-    for line in lines:
-        words = str(line).split()
-        current = ""
+        qr_img = make_qr(qr_url)
+        qr_img = qr_img.resize(
+            (440, 440),
+            Image.Resampling.LANCZOS
+        )
 
-        for word in words:
-            test = (current + " " + word).strip()
+        img.paste(qr_img, (320, 800))
 
-            width = draw.textbbox(
-                (0, 0), test, font=font,
-                direction="rtl", language="ar"
-            )[2]
+        draw_centered(
+            draw, "افتح كاميرا جوالك وامسح الرمز",
+            1340, load_font(34)
+        )
 
-            if width > 820 and current:
+    else:
+        y = 720
+        font = load_font(43)
+
+        for line in lines:
+            words = str(line).split()
+            current = ""
+
+            for word in words:
+                test = (current + " " + word).strip()
+
+                width = draw.textbbox(
+                    (0, 0), test, font=font,
+                    direction="rtl", language="ar"
+                )[2]
+
+                if width > 820 and current:
+                    draw_centered(draw, current, y, font)
+                    y += 85
+                    current = word
+                else:
+                    current = test
+
+            if current:
                 draw_centered(draw, current, y, font)
-                y += 85
-                current = word
-            else:
-                current = test
+                y += 100
 
-        if current:
-            draw_centered(draw, current, y, font)
-            y += 100
-
-        y += 35
+            y += 35
 
     draw.rectangle((0, 1640, W, H), fill=NAVY)
 
@@ -135,18 +172,32 @@ def make_video_frames(data, output_dir="frames"):
     for heading, values in fields:
         values = [v for v in values if v]
         if values:
-            scenes.append((heading, values))
+            scenes.append((heading, values, None))
+
+    article_url = data.get(
+        "article_url",
+        "https://zubda-ksa.blogspot.com/"
+    )
 
     scenes.append((
-        "قدّم الآن",
-        ["للتفاصيل وطريقة التقديم", "رابط المقال في الوصف"]
+        "امسح الرمز الآن",
+        [],
+        article_url
     ))
 
     total = len(scenes)
 
-    for i, (heading, lines) in enumerate(scenes, start=1):
-        img = make_scene(heading, lines, i, total)
-        img.save(os.path.join(output_dir, f"frame_{i:03d}.png"))
+    for i, scene in enumerate(scenes, start=1):
+        heading, lines, *qr = scene
+        qr_url = qr[0] if qr else None
+
+        img = make_scene(
+            heading, lines, i, total, qr_url
+        )
+
+        img.save(
+            os.path.join(output_dir, f"frame_{i:03d}.png")
+        )
 
     print(f"Created {total} video scenes.")
 
@@ -158,5 +209,6 @@ if __name__ == "__main__":
         "city": "الرياض",
         "target": "السعوديون",
         "workType": "دوام كامل",
-        "qualification": "بكالوريوس"
+        "qualification": "بكالوريوس",
+        "article_url": "https://zubda-ksa.blogspot.com/"
     })
