@@ -4,6 +4,9 @@ name: Zubda TikTok Video Engine
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   render:
     runs-on: ubuntu-latest
@@ -11,6 +14,8 @@ jobs:
     steps:
       - name: Get project
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -32,23 +37,22 @@ jobs:
         run: |
           python -c "from PIL import features; print('RAQM:', features.check_feature('raqm')); assert features.check_feature('raqm')"
 
-      - name: Generate video scenes and description
+      - name: Generate job videos
         run: python renderer.py
 
-      - name: Create TikTok MP4
+      - name: Save processed jobs
         run: |
-          ffmpeg -y \
-          -framerate 1/3 \
-          -i frames/frame_%03d.png \
-          -vf "fps=30,format=yuv420p" \
-          -c:v libx264 \
-          -movflags +faststart \
-          output.mp4
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add processed.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update processed jobs"
+            git push
+          fi
 
-      - name: Save video and description
+      - name: Save TikTok videos
         uses: actions/upload-artifact@v4
         with:
-          name: zubda-tiktok-video
-          path: |
-            output.mp4
-            description.txt
+          name: zubda-tiktok-videos
+          path: videos/
+          if-no-files-found: warn
