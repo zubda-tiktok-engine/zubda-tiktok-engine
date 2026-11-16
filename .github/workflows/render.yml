@@ -1,5 +1,4 @@
-
-name: Zubda TikTok Video Engine
+name: Zubda TikTok Image Engine
 
 on:
   workflow_dispatch:
@@ -22,10 +21,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg and Arabic support
+      - name: Install Arabic support
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-noto-core
+          sudo apt-get install -y fonts-noto-core
           sudo apt-get install -y libraqm-dev libharfbuzz-dev libfribidi-dev
           sudo apt-get install -y libjpeg-dev zlib1g-dev libfreetype6-dev
 
@@ -37,7 +36,7 @@ jobs:
         run: |
           python -c "from PIL import features; print('RAQM:', features.check_feature('raqm')); assert features.check_feature('raqm')"
 
-      - name: Generate job videos
+      - name: Generate job images
         run: python renderer.py
 
       - name: Save processed jobs
@@ -50,9 +49,9 @@ jobs:
             git push
           fi
 
-      - name: Save TikTok videos
+      - name: Save TikTok images
         uses: actions/upload-artifact@v4
         with:
-          name: zubda-tiktok-videos
-          path: videos/
+          name: zubda-tiktok-images
+          path: images/
           if-no-files-found: warn
