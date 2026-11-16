@@ -1,15 +1,19 @@
 
 import os
 import re
+import json
 import shutil
+import subprocess
 import requests
 import qrcode
+
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920
 BLOG_URL = "https://zubda-ksa.blogspot.com/"
-FEED_URL = BLOG_URL + "feeds/posts/default?alt=rss&max-results=1"
+FEED_URL = BLOG_URL + "feeds/posts/default?alt=rss&max-results=20"
+PROCESSED_FILE = "processed.json"
 
 NAVY = (12, 35, 70)
 WHITE = (255, 255, 255)
@@ -18,7 +22,6 @@ LIGHT = (244, 247, 251)
 
 def get_font_path(bold=False):
     family = "Noto Sans Arabic:style=Bold" if bold else "Noto Sans Arabic"
-    import subprocess
     return subprocess.check_output(
         ["fc-match", "-f", "%{file}", family],
         text=True
@@ -108,12 +111,10 @@ def make_scene(title, lines, number, total, qr_url=None):
             Image.Resampling.LANCZOS
         )
         img.paste(qr_img, (310, 790))
-
         centered(draw, "استخدم كاميرا جوالك لمسح الرمز", 1335, 32)
 
     else:
         y = 720
-
         for line in lines:
             for part in wrap_text(line, 820, 43):
                 centered(draw, part, y, 43)
@@ -127,20 +128,20 @@ def make_scene(title, lines, number, total, qr_url=None):
     return img
 
 
-def get_latest_job():
-    response = requests.get(
-        FEED_URL,
-        timeout=30,
-        headers={"User-Agent": "ZubdaTikTokEngine/1.0"}
-    )
-    response.raise_for_status()
+def load_processed():
+    if not os.path.exists(PROCESSED_FILE):
+        return []
 
-    feed = BeautifulSoup(response.content, "xml")
-    item = feed.find("item")
+    with open(PROCESSED_FILE, "r", encoding="utf-8") as file:
+        return json.load(file)
 
-    if not item:
-        raise Exception("لم يتم العثور على وظيفة منشورة في خلاصة بلوجر")
 
+def save_processed(urls):
+    with open(PROCESSED_FILE, "w", encoding="utf-8") as file:
+        json.dump(sorted(set(urls)), file, ensure_ascii=False, indent=2)
+
+
+def extract_job(item):
     title = item.title.get_text(" ", strip=True)
     url = item.link.get_text(strip=True)
 
@@ -167,10 +168,18 @@ def get_latest_job():
         match = re.search(pattern, full_text, re.IGNORECASE)
         return match.group(1).strip() if match else ""
 
-    city = extract(r"(?:الموقع|مكان العمل|المدينة)\s*:\s*([^\n،]+)")
-    target = extract(r"(?:الفئة المستهدفة|الجنسية)\s*:\s*([^\n]+)")
-    work_type = extract(r"(?:نوع العمل|طبيعة العمل)\s*:\s*([^\n]+)")
-    qualification = extract(r"(?:المؤهل المطلوب|المؤهلات المطلوبة|المؤهل)\s*:\s*([^\n]+)")
+    city = extract(
+        r"(?:الموقع|مكان العمل|المدينة)\s*:\s*([^\n،]+)"
+    )
+    target = extract(
+        r"(?:الفئة المستهدفة|الجنسية)\s*:\s*([^\n]+)"
+    )
+    work_type = extract(
+        r"(?:نوع العمل|طبيعة العمل)\s*:\s*([^\n]+)"
+    )
+    qualification = extract(
+        r"(?:المؤهل المطلوب|المؤهلات المطلوبة|المؤهل)\s*:\s*([^\n]+)"
+    )
 
     intro = ""
     for paragraph in paragraphs:
@@ -193,11 +202,16 @@ def get_latest_job():
     }
 
 
-def make_video_frames(job):
-    if os.path.exists("frames"):
-        shutil.rmtree("frames")
+def render_job(job, index):
+    safe_name = re.sub(
+        r"[^a-zA-Z0-9_-]",
+        "_",
+        str(index)
+    )
+    folder = os.path.join("videos", safe_name)
+    frames_dir = os.path.join(folder, "frames")
 
-    os.makedirs("frames")
+    os.makedirs(frames_dir, exist_ok=True)
 
     scenes = [
         ("وظيفة جديدة", ["فرصة وظيفية من زبدة الوظائف"]),
@@ -234,7 +248,9 @@ def make_video_frames(job):
         image = make_scene(
             heading, lines, i, total, qr_url
         )
-        image.save(f"frames/frame_{i:03d}.png")
+        image.save(
+            os.path.join(frames_dir, f"frame_{i:03d}.png")
+        )
 
     description = [
         "💼 " + job["title"],
@@ -264,14 +280,67 @@ def make_video_frames(job):
         "#وظائف #وظائف_السعودية"
     ]
 
-    with open("description.txt", "w", encoding="utf-8") as file:
+    with open(
+        os.path.join(folder, "description.txt"),
+        "w",
+        encoding="utf-8"
+    ) as file:
         file.write("\n".join(description))
 
-    print("تم إنشاء الفيديو والوصف للوظيفة:")
-    print(job["title"])
-    print(job["url"])
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-framerate", "1/3",
+        "-i", os.path.join(frames_dir, "frame_%03d.png"),
+        "-vf", "fps=30,format=yuv420p",
+        "-c:v", "libx264",
+        "-movflags", "+faststart",
+        os.path.join(folder, "output.mp4")
+    ], check=True)
+
+    print("تم إنشاء فيديو:", job["title"])
+
+
+def main():
+    response = requests.get(
+        FEED_URL,
+        timeout=30,
+        headers={"User-Agent": "ZubdaTikTokEngine/1.0"}
+    )
+    response.raise_for_status()
+
+    feed = BeautifulSoup(response.content, "xml")
+    items = feed.find_all("item")
+
+    processed = load_processed()
+    processed_set = set(processed)
+
+    new_items = [
+        item for item in items
+        if item.link and item.link.get_text(strip=True)
+        and item.link.get_text(strip=True) not in processed_set
+    ]
+
+    if not new_items:
+        print("لا توجد وظائف جديدة.")
+        return
+
+    os.makedirs("videos", exist_ok=True)
+
+    for index, item in enumerate(new_items, start=1):
+        url = item.link.get_text(strip=True)
+
+        try:
+            job = extract_job(item)
+            render_job(job, index)
+            processed.append(url)
+            save_processed(processed)
+
+        except Exception as error:
+            print("تعذر معالجة الوظيفة:", url)
+            print("السبب:", error)
+
+    print("انتهت معالجة الوظائف الجديدة.")
 
 
 if __name__ == "__main__":
-    job = get_latest_job()
-    make_video_frames(job)
+    main()
