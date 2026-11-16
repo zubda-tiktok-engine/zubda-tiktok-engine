@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -7,6 +6,7 @@ import subprocess
 import requests
 import qrcode
 
+from urllib.parse import urlsplit, urlunsplit
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,6 +18,39 @@ PROCESSED_FILE = "processed.json"
 NAVY = (12, 35, 70)
 WHITE = (255, 255, 255)
 LIGHT = (244, 247, 251)
+
+
+def normalize_url(url):
+    """توحيد رابط المقال لمنع تكراره."""
+    if not url:
+        return ""
+
+    url = url.strip()
+    parts = urlsplit(url)
+
+    scheme = parts.scheme.lower()
+    hostname = (parts.hostname or "").lower()
+
+    if not hostname:
+        return url.rstrip("/")
+
+    port = parts.port
+    if port and not (
+        (scheme == "https" and port == 443)
+        or (scheme == "http" and port == 80)
+    ):
+        hostname = f"{hostname}:{port}"
+
+    path = parts.path.rstrip("/") or "/"
+
+    # تجاهل query و fragment لأنها لا تغيّر هوية مقال بلوجر
+    return urlunsplit((
+        scheme,
+        hostname,
+        path,
+        "",
+        ""
+    ))
 
 
 def get_font_path(bold=False):
@@ -137,8 +170,21 @@ def load_processed():
 
 
 def save_processed(urls):
+    # حفظ الروابط بعد توحيدها وإزالة التكرار
+    unique = {}
+
+    for url in urls:
+        normalized = normalize_url(url)
+        if normalized:
+            unique[normalized] = url
+
     with open(PROCESSED_FILE, "w", encoding="utf-8") as file:
-        json.dump(sorted(set(urls)), file, ensure_ascii=False, indent=2)
+        json.dump(
+            sorted(unique.values()),
+            file,
+            ensure_ascii=False,
+            indent=2
+        )
 
 
 def extract_job(item):
@@ -312,13 +358,38 @@ def main():
     items = feed.find_all("item")
 
     processed = load_processed()
-    processed_set = set(processed)
 
-    new_items = [
-        item for item in items
-        if item.link and item.link.get_text(strip=True)
-        and item.link.get_text(strip=True) not in processed_set
-    ]
+    # تحويل الروابط القديمة إلى صيغة موحدة للمقارنة
+    seen_urls = {
+        normalize_url(url)
+        for url in processed
+        if normalize_url(url)
+    }
+
+    new_items = []
+
+    # منع تكرار الرابط أثناء قراءة نفس RSS
+    for item in items:
+        if not item.link:
+            continue
+
+        url = item.link.get_text(strip=True)
+
+        if not url:
+            continue
+
+        normalized = normalize_url(url)
+
+        if not normalized:
+            continue
+
+        if normalized in seen_urls:
+            print("تم تجاوز رابط مكرر أو سبق إنتاجه:", url)
+            continue
+
+        # تسجيل الرابط فور إضافته حتى لا يدخل مرة ثانية
+        seen_urls.add(normalized)
+        new_items.append(item)
 
     if not new_items:
         print("لا توجد وظائف جديدة.")
@@ -332,6 +403,7 @@ def main():
         try:
             job = extract_job(item)
             render_job(job, index)
+
             processed.append(url)
             save_processed(processed)
 
