@@ -1,8 +1,7 @@
 
 import os
-from PIL import Image, ImageDraw, ImageFont
-import arabic_reshaper
-from bidi.algorithm import get_display
+import subprocess
+from PIL import Image, ImageDraw, ImageFont, features
 
 W, H = 1080, 1920
 
@@ -10,27 +9,36 @@ NAVY = (12, 35, 70)
 WHITE = (255, 255, 255)
 LIGHT = (244, 247, 251)
 
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+def get_font_path(bold=False):
+    family = "Noto Sans Arabic:style=Bold" if bold else "Noto Sans Arabic"
+    return subprocess.check_output(
+        ["fc-match", "-f", "%{file}", family],
+        text=True
+    ).strip()
 
 
-def arabic(text):
-    reshaped = arabic_reshaper.reshape(str(text))
-    return get_display(reshaped)
+REGULAR_FONT = get_font_path(False)
+BOLD_FONT = get_font_path(True)
 
 
 def load_font(size, bold=False):
-    path = BOLD_PATH if bold else FONT_PATH
-    return ImageFont.truetype(path, size)
+    return ImageFont.truetype(
+        BOLD_FONT if bold else REGULAR_FONT,
+        size,
+        layout_engine=ImageFont.Layout.RAQM
+    )
 
 
 def draw_centered(draw, text, y, font, color=NAVY):
     draw.text(
         (W // 2, y),
-        arabic(text),
+        str(text),
         font=font,
         fill=color,
-        anchor="mm"
+        anchor="mm",
+        direction="rtl",
+        language="ar"
     )
 
 
@@ -62,20 +70,23 @@ def make_scene(title, lines, number, total):
     )
 
     y = 720
+    font = load_font(43)
 
     for line in lines:
-        font = load_font(43)
         words = str(line).split()
         current = ""
 
         for word in words:
             test = (current + " " + word).strip()
-            shaped = arabic(test)
 
-            if draw.textbbox((0, 0), shaped, font=font)[2] > 820:
-                if current:
-                    draw_centered(draw, current, y, font)
-                    y += 85
+            width = draw.textbbox(
+                (0, 0), test, font=font,
+                direction="rtl", language="ar"
+            )[2]
+
+            if width > 820 and current:
+                draw_centered(draw, current, y, font)
+                y += 85
                 current = word
             else:
                 current = test
