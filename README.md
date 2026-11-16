@@ -1,16 +1,31 @@
-## Hi there 👋
+# محرك صور زبدة الوظائف لـ TikTok
 
-<!--
-**zubda-tiktok-engine/zubda-tiktok-engine** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+مشروع آلي يحوّل الوظائف المنشورة في مدونة زبدة الوظائف إلى صور طويلة جاهزة للنشر اليدوي على TikTok.
 
-Here are some ideas to get you started:
+## ماذا يفعل؟
+- يجلب الوظائف من خلاصة المدونة.
+- ينشئ صورة مستقلة لكل وظيفة.
+- يكيّف طول التصميم حسب محتوى الوظيفة.
+- يعرض عنوان الوظيفة والجهة والتفاصيل المتاحة دون اختلاق معلومات.
+- يضيف رمز QR يفتح مقال الوظيفة نفسه.
+- ينشئ ملف description.txt لكل صورة، يتضمن الوصف والرابط والهاشتاقات.
+- يتناوب بين 100 تصميم بصري مختلف.
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## طريقة التشغيل
+1. افتح تبويب Actions في GitHub.
+2. اختر Zubda TikTok Image Engine.
+3. اضغط Run workflow.
+4. بعد اكتمال التشغيل، افتح Artifacts.
+5. حمّل zubda-tiktok-images وفك ضغطه.
+6. استخدم post.png وdescription.txt لكل وظيفة عند النشر على TikTok.
+
+## الملفات الأساسية
+- renderer.py: إنشاء الصور والأوصاف ورموز QR.
+- images_processed.json: سجل الوظائف التي عالجها المحرك لمنع التكرار.
+- requirements.txt: مكتبات Python المطلوبة.
+- .github/workflows/render.yml: إعداد تشغيل المحرك وحفظ الصور.
+
+## ملاحظات
+- المشروع مخصص لإنشاء الصور فقط، ولا ينشئ فيديو.
+- النشر على TikTok يدوي، ولا ينشر المحرك تلقائيًا.
+- لا تحذف images_processed.json لأنه يحفظ سجل الوظائف المعالجة.
