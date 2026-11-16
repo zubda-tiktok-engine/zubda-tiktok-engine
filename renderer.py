@@ -1,10 +1,15 @@
 
 import os
-import subprocess
+import re
+import shutil
+import requests
 import qrcode
+from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1080, 1920
+BLOG_URL = "https://zubda-ksa.blogspot.com/"
+FEED_URL = BLOG_URL + "feeds/posts/default?alt=rss&max-results=1"
 
 NAVY = (12, 35, 70)
 WHITE = (255, 255, 255)
@@ -13,17 +18,18 @@ LIGHT = (244, 247, 251)
 
 def get_font_path(bold=False):
     family = "Noto Sans Arabic:style=Bold" if bold else "Noto Sans Arabic"
+    import subprocess
     return subprocess.check_output(
         ["fc-match", "-f", "%{file}", family],
         text=True
     ).strip()
 
 
-REGULAR_FONT = get_font_path(False)
+REGULAR_FONT = get_font_path()
 BOLD_FONT = get_font_path(True)
 
 
-def load_font(size, bold=False):
+def font(size, bold=False):
     return ImageFont.truetype(
         BOLD_FONT if bold else REGULAR_FONT,
         size,
@@ -31,11 +37,11 @@ def load_font(size, bold=False):
     )
 
 
-def draw_centered(draw, text, y, font, color=NAVY):
+def centered(draw, text, y, size=42, bold=False, color=NAVY):
     draw.text(
         (W // 2, y),
         str(text),
-        font=font,
+        font=font(size, bold),
         fill=color,
         anchor="mm",
         direction="rtl",
@@ -43,9 +49,28 @@ def draw_centered(draw, text, y, font, color=NAVY):
     )
 
 
+def wrap_text(text, max_width, size=42):
+    result = []
+    current = ""
+
+    for word in str(text).split():
+        test = (current + " " + word).strip()
+        box = font(size).getbbox(test, direction="rtl")
+
+        if box[2] - box[0] > max_width and current:
+            result.append(current)
+            current = word
+        else:
+            current = test
+
+    if current:
+        result.append(current)
+
+    return result
+
+
 def make_qr(url):
     qr = qrcode.QRCode(
-        version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
         box_size=12,
         border=4
@@ -64,16 +89,8 @@ def make_scene(title, lines, number, total, qr_url=None):
     draw = ImageDraw.Draw(img)
 
     draw.rectangle((0, 0, W, 280), fill=NAVY)
-
-    draw_centered(
-        draw, "زبدة الوظائف", 115,
-        load_font(58, True), WHITE
-    )
-
-    draw_centered(
-        draw, "وظائف شاغرة", 205,
-        load_font(35), WHITE
-    )
+    centered(draw, "زبدة الوظائف", 115, 58, True, WHITE)
+    centered(draw, "وظائف شاغرة", 205, 35, False, WHITE)
 
     draw.rounded_rectangle(
         (65, 390, 1015, 1510),
@@ -81,109 +98,132 @@ def make_scene(title, lines, number, total, qr_url=None):
         fill=WHITE
     )
 
-    draw_centered(
-        draw, title, 510,
-        load_font(54, True)
-    )
+    centered(draw, title, 510, 52, True)
 
     if qr_url:
-        draw_centered(
-            draw, "امسح الرمز للوصول إلى الوظيفة",
-            680, load_font(38, True)
-        )
+        centered(draw, "امسح الرمز للوصول إلى الوظيفة", 680, 38, True)
 
-        qr_img = make_qr(qr_url)
-        qr_img = qr_img.resize(
-            (440, 440),
+        qr_img = make_qr(qr_url).resize(
+            (460, 460),
             Image.Resampling.LANCZOS
         )
+        img.paste(qr_img, (310, 790))
 
-        img.paste(qr_img, (320, 800))
-
-        draw_centered(
-            draw, "افتح كاميرا جوالك وامسح الرمز",
-            1340, load_font(34)
-        )
+        centered(draw, "استخدم كاميرا جوالك لمسح الرمز", 1335, 32)
 
     else:
         y = 720
-        font = load_font(43)
 
         for line in lines:
-            words = str(line).split()
-            current = ""
-
-            for word in words:
-                test = (current + " " + word).strip()
-
-                width = draw.textbbox(
-                    (0, 0), test, font=font,
-                    direction="rtl", language="ar"
-                )[2]
-
-                if width > 820 and current:
-                    draw_centered(draw, current, y, font)
-                    y += 85
-                    current = word
-                else:
-                    current = test
-
-            if current:
-                draw_centered(draw, current, y, font)
-                y += 100
-
-            y += 35
+            for part in wrap_text(line, 820, 43):
+                centered(draw, part, y, 43)
+                y += 85
+            y += 25
 
     draw.rectangle((0, 1640, W, H), fill=NAVY)
-
-    draw_centered(
-        draw, "التفاصيل وطريقة التقديم",
-        1740, load_font(48, True), WHITE
-    )
-
-    draw_centered(
-        draw, f"{number} / {total}",
-        1850, load_font(30), WHITE
-    )
+    centered(draw, "التفاصيل وطريقة التقديم", 1740, 46, True, WHITE)
+    centered(draw, f"{number} / {total}", 1850, 30, False, WHITE)
 
     return img
 
 
-def make_video_frames(data, output_dir="frames"):
-    os.makedirs(output_dir, exist_ok=True)
+def get_latest_job():
+    response = requests.get(
+        FEED_URL,
+        timeout=30,
+        headers={"User-Agent": "ZubdaTikTokEngine/1.0"}
+    )
+    response.raise_for_status()
+
+    feed = BeautifulSoup(response.content, "xml")
+    item = feed.find("item")
+
+    if not item:
+        raise Exception("لم يتم العثور على وظيفة منشورة في خلاصة بلوجر")
+
+    title = item.title.get_text(" ", strip=True)
+    url = item.link.get_text(strip=True)
+
+    content = item.find("content:encoded")
+    if not content:
+        content = item.description
+
+    html = content.get_text() if content else ""
+    soup = BeautifulSoup(html, "html.parser")
+
+    paragraphs = [
+        p.get_text(" ", strip=True)
+        for p in soup.find_all(["p", "li"])
+    ]
+    paragraphs = [p for p in paragraphs if p]
+
+    full_text = "\n".join(paragraphs)
+
+    parts = [p.strip() for p in title.split(" - ") if p.strip()]
+    company = parts[-1] if len(parts) > 1 else ""
+    job_title = " - ".join(parts[:-1]) if len(parts) > 1 else title
+
+    def extract(pattern):
+        match = re.search(pattern, full_text, re.IGNORECASE)
+        return match.group(1).strip() if match else ""
+
+    city = extract(r"(?:الموقع|مكان العمل|المدينة)\s*:\s*([^\n،]+)")
+    target = extract(r"(?:الفئة المستهدفة|الجنسية)\s*:\s*([^\n]+)")
+    work_type = extract(r"(?:نوع العمل|طبيعة العمل)\s*:\s*([^\n]+)")
+    qualification = extract(r"(?:المؤهل المطلوب|المؤهلات المطلوبة|المؤهل)\s*:\s*([^\n]+)")
+
+    intro = ""
+    for paragraph in paragraphs:
+        if len(paragraph) > 25 and not re.search(
+            r"^(الموقع|الخبرة المطلوبة|طريقة التقديم|للتقديم)",
+            paragraph
+        ):
+            intro = paragraph
+            break
+
+    return {
+        "title": job_title,
+        "company": company,
+        "city": city,
+        "target": target,
+        "work_type": work_type,
+        "qualification": qualification,
+        "intro": intro,
+        "url": url
+    }
+
+
+def make_video_frames(job):
+    if os.path.exists("frames"):
+        shutil.rmtree("frames")
+
+    os.makedirs("frames")
 
     scenes = [
-        ("وظيفة جديدة", ["فرصة وظيفية من زبدة الوظائف"])
+        ("وظيفة جديدة", ["فرصة وظيفية من زبدة الوظائف"]),
+        ("المسمى الوظيفي والجهة", [
+            job["title"],
+            job["company"]
+        ])
     ]
 
-    fields = [
-        ("المسمى الوظيفي والجهة",
-         [data.get("title", ""), data.get("company", "")]),
+    if job["intro"]:
+        scenes.append(("نبذة عن الوظيفة", [job["intro"]]))
 
-        ("مكان العمل", [data.get("city", "")]),
+    if job["city"]:
+        scenes.append(("مكان العمل", [job["city"]]))
 
-        ("تفاصيل الوظيفة",
-         [data.get("target", ""), data.get("workType", "")]),
-
-        ("المؤهلات والشروط",
-         [data.get("qualification", "")])
+    details = [
+        job["target"],
+        job["work_type"],
+        job["qualification"]
     ]
+    details = [x for x in details if x]
 
-    for heading, values in fields:
-        values = [v for v in values if v]
-        if values:
-            scenes.append((heading, values, None))
+    if details:
+        scenes.append(("تفاصيل الوظيفة", details))
 
-    article_url = data.get(
-        "article_url",
-        "https://zubda-ksa.blogspot.com/"
-    )
-
-    scenes.append((
-        "امسح الرمز الآن",
-        [],
-        article_url
-    ))
+    scenes.append(("امسح الرمز الآن", [], job["url"]))
 
     total = len(scenes)
 
@@ -191,24 +231,47 @@ def make_video_frames(data, output_dir="frames"):
         heading, lines, *qr = scene
         qr_url = qr[0] if qr else None
 
-        img = make_scene(
+        image = make_scene(
             heading, lines, i, total, qr_url
         )
+        image.save(f"frames/frame_{i:03d}.png")
 
-        img.save(
-            os.path.join(output_dir, f"frame_{i:03d}.png")
-        )
+    description = [
+        "💼 " + job["title"],
+        "🏢 " + job["company"],
+    ]
 
-    print(f"Created {total} video scenes.")
+    if job["city"]:
+        description.append("📍 مكان العمل: " + job["city"])
+
+    if job["target"]:
+        description.append("🎯 الفئة المستهدفة: " + job["target"])
+
+    if job["work_type"]:
+        description.append("⏰ نوع العمل: " + job["work_type"])
+
+    if job["qualification"]:
+        description.append("📘 المؤهلات: " + job["qualification"])
+
+    description += [
+        "",
+        "🔗 رابط الوظيفة والتقديم:",
+        job["url"],
+        "",
+        "💼 مدونة زبدة الوظائف:",
+        BLOG_URL,
+        "",
+        "#وظائف #وظائف_السعودية"
+    ]
+
+    with open("description.txt", "w", encoding="utf-8") as file:
+        file.write("\n".join(description))
+
+    print("تم إنشاء الفيديو والوصف للوظيفة:")
+    print(job["title"])
+    print(job["url"])
 
 
 if __name__ == "__main__":
-    make_video_frames({
-        "title": "أخصائي موارد بشرية",
-        "company": "شركة سعودية",
-        "city": "الرياض",
-        "target": "السعوديون",
-        "workType": "دوام كامل",
-        "qualification": "بكالوريوس",
-        "article_url": "https://zubda-ksa.blogspot.com/"
-    })
+    job = get_latest_job()
+    make_video_frames(job)
